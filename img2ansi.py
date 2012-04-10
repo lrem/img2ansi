@@ -27,8 +27,17 @@
 #  OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
 #  SUCH DAMAGE.
 #
+
+"""
+img2ansi - a simple image to coloured ASCII-art converter
+"""
+
 import sys
-import Image
+try:
+    import Image
+except:
+    # Image is part of PIL and in my setup has to be imported like that
+    from PIL import Image
 import rgb256
 import random
 
@@ -38,67 +47,46 @@ def tohex((r,g,b)):
 
 cprefix = "\033"
 
-#
-# Defaults. These can be modified by commandline options.
-#
+import argparse
 
+parser = argparse.ArgumentParser(
+        description = __doc__)
+parser.add_argument('image', help = "the input image file")
+parser.add_argument('width', help = "width of resulting art", type = int)
+parser.add_argument('height', help = "height of resulting art", type = int)
+parser.add_argument('--ansichar', default="0", 
+        help = "the character used as the foreground of the output."
+               "ignored when ascii is set to true (default: 0)")
+parser.add_argument('--ansipalette', 
+        default = ".,-_ivc=!/|\\~gjez2]/(YL)t[+T7VfmdK4ZGbNDXY5P*QW8KMA""#%$",
+        help = "the palette of ascii characters that will be used"
+               " if ansichar=random.")
+parser.add_argument('--bgcolor', default = "0",
+        help = "HEX representation of a color (without the leading '#' that"
+               " will be transparent in the output (replaced by a whitespace.")
+parser.add_argument('--ascii', action = 'store_true',
+        help = "if set to true, the luminosity will be represented by"
+               " a ascii character with a similar 'optical weight'.")
+parser.add_argument('--randomansi', action = 'store_true',
+        help = "will use a random character from ansipalette, instead of the"
+               " ansichar value")
+parser.add_argument('--echo', action = 'store_true',
+        help = "if set to true, the output will converted to a string which"
+               " can be copied into other print/echo commands.")
+parser.add_argument('--revert', action = 'store_true',
+        help = "if set to true, the greyscale charset collection will be"
+               " reverted (might look better on brighter images).")
+args = parser.parse_args()
+
+img, width, height = args.image, args.width, args.height
+
+# I'm too lazy to think about these 2.
 _o = {}
-_o['o_echo'] = 0
-_o['bgcolor'] = "0"
-_o['ansichar'] = "0"
-_o['ascii'] = "false"
-_o['randomansi'] = "false"
-_o['revert'] = "false"
-_o['echo'] = "false"
-_o['ansipalette'] = ".,-_ivc=!/|\\~gjez2]/(YL)t[+T7VfmdK4ZGbNDXY5P*QW8KMA""#%$"
+args.o_echo = 0
+args.bgcolor = args.bgcolor.upper()
 
-for e in sys.argv:        
-    try:
-        e = e.split("=")
-        #print e
-        if e[0] in _o:
-            _o[e[0]] = e[1]
-    except:
-        pass
-        
-_o['bgcolor'] = _o['bgcolor'].upper()
-_o['ascii'] = _o['ascii'].upper()
-_o['revert'] = _o['revert'].upper()
-_o['echo'] = _o['echo'].upper()
-_o['randomansi'] = _o['randomansi'].upper()
-
-if _o['echo'] == "TRUE":
+if args.echo:
     cprefix="\\033"
-    
-try:
-    img = sys.argv[1]
-    width = int(sys.argv[2])
-    height = int(sys.argv[3])
-except:
-    print "%s: Wrong # of args!" % sys.argv[0]
-    print "syntax: %s <image> <width> <height> [<options...>]" % sys.argv[0]
-    print " "
-    print "options can be one of the following:"
-    print " "
-    print "ansichar=...    - the character used as the foreground of the output."
-    print "                  ignored when ascii is set to true (default: 0)"
-    print "ansipalette=... - the palette of ascii characters that will be used"
-    print "                  if ansichar=random."
-    print "ascii=...       - if set to true, the luminosity will be represented by"
-    print "                  a ascii character with a similar 'optical weight'."
-    print "bgcolor=...     - HEX representation of a color (without the leading '#'"
-    print "                  that will be transparent in the output (replaced by a"
-    print "                  a whitespace."
-    print "echo=...        - if set to true, the output will converted to a string"
-    print "                  which can be copied into other print/echo commands."
-    print "randomansi=...  - will use a random character from ansipalette, instead"
-    print "                  of the ansichar value"
-    print "revert=...      - if set to true, the greyscale charset collection will"
-    print "                  be reverted (might look better on brighter images."
-    print " "
-    exit(1)
-
-
 
 try:
     im = Image.open(sys.argv[1])
@@ -108,7 +96,7 @@ except:
 im = im.resize((width, height), Image.BILINEAR)
 
     
-if _o['ascii'] == "TRUE":
+if args.ascii:
     from bisect import bisect
     greyscale = [
                 " ",
@@ -125,7 +113,7 @@ if _o['ascii'] == "TRUE":
     im2 = im2.resize((width, height), Image.BILINEAR)
     im2 = im2.convert("L")
 
-if _o['revert'] == "TRUE":
+if args.revert:
     greyscale.reverse()
 
 
@@ -133,16 +121,16 @@ for y in range(0, im.size[1]):
     line = ""
     for x in range(0, im.size[0]):
         hexcolor = tohex(im.getpixel( (x,y) ))
-        if (hexcolor != _o['bgcolor']):
-            if _o['randomansi'] == "TRUE":  
-                _o['ansichar'] = _o['ansipalette'][random.randint(0,len(_o['ansipalette'])-1)]
+        if (hexcolor != args.bgcolor):
+            if args.randomansi:  
+                args.ansichar = args.ansipalette[random.randint(0,len(args.ansipalette)-1)]
             color = str(rgb256.rgb_to_256(hexcolor)).strip()
-            if _o['ascii'] == 'TRUE':
+            if args.ascii:
                 lum = 255 - im2.getpixel((x,y))
                 row = bisect(zonebounds,lum)
                 possibles = greyscale[row]
-                _o['ansichar'] = possibles[random.randint(0,len(possibles)-1)]
-            line += cprefix+"[38;5;"+color+"m"+_o['ansichar']+"\033[0;0;0m"
+                args.ansichar = possibles[random.randint(0,len(possibles)-1)]
+            line += cprefix+"[38;5;"+color+"m"+args.ansichar+"\033[0;0;0m"
         else:
             line += " "
     print line
